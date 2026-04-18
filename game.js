@@ -6,6 +6,7 @@ const nameInput = document.getElementById('nameInput');
 const connStatus = document.getElementById('connStatus');
 const resourceBox = document.getElementById('resourceBox');
 const evoList = document.getElementById('evoList');
+const roomInput = document.getElementById('roomInput');
 
 const keys = { w: false, a: false, s: false, d: false, attack: false };
 let socket;
@@ -14,8 +15,10 @@ let world = { width: 4200, height: 3000 };
 let state = { players: [], enemies: [], resources: [] };
 let evolutions = {};
 let camera = { x: 0, y: 0 };
+let inputTimer = null;
 
 function log(msg) {
+  if (logEl.textContent.includes('等待加入服务器')) logEl.innerHTML = '';
   const d = document.createElement('div');
   d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
   logEl.prepend(d);
@@ -187,12 +190,13 @@ function bindKeys() {
 }
 
 function connect() {
+  if (socket) socket.disconnect();
   socket = io();
   connStatus.textContent = '连接中...';
   connStatus.style.background = '#5a4d1b';
 
   socket.on('connect', () => {
-    socket.emit('join', { name: nameInput.value.trim() || '玩家' });
+    socket.emit('join', { name: nameInput.value.trim() || '玩家', roomId: roomInput.value.trim() || 'main' });
   });
 
   socket.on('welcome', (payload) => {
@@ -200,7 +204,7 @@ function connect() {
     world = payload.world;
     evolutions = payload.evolutions;
     drawEvolutionList();
-    connStatus.textContent = '已连接';
+    connStatus.textContent = `已连接 (${payload.roomId})`;
     connStatus.style.background = '#1f5b34';
     log('连接成功，开始联机。');
   });
@@ -216,7 +220,8 @@ function connect() {
     log('连接断开。');
   });
 
-  setInterval(sendInput, 1000 / 20);
+  if (inputTimer) clearInterval(inputTimer);
+  inputTimer = setInterval(sendInput, 1000 / 20);
 }
 
 bindKeys();

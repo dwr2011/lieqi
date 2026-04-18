@@ -9,14 +9,32 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 const WORLD = { width: 4200, height: 3000 };
-const players = new Map();
-const resources = [];
-const enemies = [];
+const TICK_RATE = 30;
+const rooms = new Map();
 
 function rand(min, max) { return Math.random() * (max - min) + min; }
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 
-function spawnResource(type) {
-  resources.push({
+const EVOLUTIONS = {
+  exoskeleton: { costs: { protein: 8, mineral: 16, gas: 2 }, bonus: { maxHp: 50, armor: 0.18, attack: 3, speed: -0.2 }, form: 'armored_cell' },
+  lung: { costs: { protein: 14, mineral: 3, gas: 12 }, bonus: { maxHp: 16, armor: 0.03, attack: 2, speed: 0.35 }, form: 'aero_cell' },
+  toxin: { costs: { protein: 10, mineral: 5, gas: 12 }, bonus: { maxHp: 8, armor: 0.04, attack: 7, speed: 0.1 }, form: 'toxic_cell' },
+  fin: { costs: { protein: 12, mineral: 6, gas: 7 }, bonus: { maxHp: 20, armor: 0.02, attack: 4, speed: 0.3 }, form: 'fin_cell' },
+  spores: { costs: { protein: 6, mineral: 8, gas: 14 }, bonus: { maxHp: 26, armor: 0.1, attack: 3, speed: 0.12 }, form: 'spore_cell' },
+  crab: { costs: { protein: 24, mineral: 30, gas: 8 }, bonus: { maxHp: 60, armor: 0.14, attack: 8, speed: -0.05 }, form: 'crab' },
+  lizard: { costs: { protein: 30, mineral: 10, gas: 20 }, bonus: { maxHp: 24, armor: 0.06, attack: 12, speed: 0.25 }, form: 'lizard' },
+  jelly: { costs: { protein: 16, mineral: 12, gas: 34 }, bonus: { maxHp: 22, armor: 0.04, attack: 13, speed: 0.2 }, form: 'jelly' },
+  ray: { costs: { protein: 28, mineral: 20, gas: 16 }, bonus: { maxHp: 32, armor: 0.08, attack: 10, speed: 0.18 }, form: 'ray' },
+  beetle: { costs: { protein: 22, mineral: 32, gas: 10 }, bonus: { maxHp: 48, armor: 0.16, attack: 9, speed: 0.0 }, form: 'beetle' },
+};
+
+function canBuy(store, costs) {
+  return Object.entries(costs).every(([k, v]) => store[k] >= v);
+}
+
+function spawnResource(room, type) {
+  room.resources.push({
     id: Math.random().toString(36).slice(2),
     x: rand(30, WORLD.width - 30),
     y: rand(30, WORLD.height - 30),
@@ -25,8 +43,8 @@ function spawnResource(type) {
   });
 }
 
-function spawnEnemy() {
-  enemies.push({
+function spawnEnemy(room) {
+  room.enemies.push({
     id: Math.random().toString(36).slice(2),
     x: rand(100, WORLD.width - 100),
     y: rand(100, WORLD.height - 100),
@@ -43,12 +61,20 @@ function spawnEnemy() {
   });
 }
 
-for (let i = 0; i < 140; i++) spawnResource(['protein', 'mineral', 'gas'][i % 3]);
-for (let i = 0; i < 18; i++) spawnEnemy();
+function getRoomState(roomId) {
+  if (!rooms.has(roomId)) {
+    const room = { roomId, players: new Map(), resources: [], enemies: [] };
+    for (let i = 0; i < 140; i++) spawnResource(room, ['protein', 'mineral', 'gas'][i % 3]);
+    for (let i = 0; i < 18; i++) spawnEnemy(room);
+    rooms.set(roomId, room);
+  }
+  return rooms.get(roomId);
+}
 
-function createPlayer(id, name) {
+function createPlayer(id, name, roomId) {
   return {
     id,
+    roomId,
     name,
     x: rand(200, WORLD.width - 200),
     y: rand(200, WORLD.height - 200),
@@ -68,9 +94,6 @@ function createPlayer(id, name) {
   };
 }
 
-function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
-function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
-
 function hitPlayer(target, dmg) {
   const final = Math.max(1, Math.floor(dmg * (1 - target.armor)));
   target.hp -= final;
@@ -83,7 +106,7 @@ function hitPlayer(target, dmg) {
   return false;
 }
 
-function enemyBrain(e) {
+function enemyBrain(room, e) {
   e.stateTick -= 1;
   if (e.stateTick <= 0) {
     const pick = Math.random();
@@ -95,7 +118,7 @@ function enemyBrain(e) {
 
   let nearest = null;
   let best = Infinity;
-  for (const p of players.values()) {
+  for (const p of room.players.values()) {
     const d = dist(e, p);
     if (d < best) {
       best = d;
@@ -103,15 +126,11 @@ function enemyBrain(e) {
     }
   }
 
-  if (nearest && best < 280 && Math.random() > 0.4) {
-    e.aggro = nearest.id;
-  }
-  if (!nearest || best > 460 || Math.random() < 0.01) {
-    e.aggro = null;
-  }
+  if (nearest && best < 280 && Math.random() > 0.4) e.aggro = nearest.id;
+  if (!nearest || best > 460 || Math.random() < 0.01) e.aggro = null;
 
-  if (e.aggro && players.has(e.aggro)) {
-    const t = players.get(e.aggro);
+  if (e.aggro && room.players.has(e.aggro)) {
+    const t = room.players.get(e.aggro);
     const dx = t.x - e.x;
     const dy = t.y - e.y;
     const len = Math.hypot(dx, dy) || 1;
@@ -129,23 +148,6 @@ function enemyBrain(e) {
   if (e.y < 40 || e.y > WORLD.height - 40) e.dirY *= -1;
 }
 
-const EVOLUTIONS = {
-  exoskeleton: { costs: { protein: 8, mineral: 16, gas: 2 }, bonus: { maxHp: 50, armor: 0.18, attack: 3, speed: -0.2 }, form: 'armored_cell' },
-  lung: { costs: { protein: 14, mineral: 3, gas: 12 }, bonus: { maxHp: 16, armor: 0.03, attack: 2, speed: 0.35 }, form: 'aero_cell' },
-  toxin: { costs: { protein: 10, mineral: 5, gas: 12 }, bonus: { maxHp: 8, armor: 0.04, attack: 7, speed: 0.1 }, form: 'toxic_cell' },
-  fin: { costs: { protein: 12, mineral: 6, gas: 7 }, bonus: { maxHp: 20, armor: 0.02, attack: 4, speed: 0.3 }, form: 'fin_cell' },
-  spores: { costs: { protein: 6, mineral: 8, gas: 14 }, bonus: { maxHp: 26, armor: 0.1, attack: 3, speed: 0.12 }, form: 'spore_cell' },
-  crab: { costs: { protein: 24, mineral: 30, gas: 8 }, bonus: { maxHp: 60, armor: 0.14, attack: 8, speed: -0.05 }, form: 'crab' },
-  lizard: { costs: { protein: 30, mineral: 10, gas: 20 }, bonus: { maxHp: 24, armor: 0.06, attack: 12, speed: 0.25 }, form: 'lizard' },
-  jelly: { costs: { protein: 16, mineral: 12, gas: 34 }, bonus: { maxHp: 22, armor: 0.04, attack: 13, speed: 0.2 }, form: 'jelly' },
-  ray: { costs: { protein: 28, mineral: 20, gas: 16 }, bonus: { maxHp: 32, armor: 0.08, attack: 10, speed: 0.18 }, form: 'ray' },
-  beetle: { costs: { protein: 22, mineral: 32, gas: 10 }, bonus: { maxHp: 48, armor: 0.16, attack: 9, speed: 0.0 }, form: 'beetle' },
-};
-
-function canBuy(store, costs) {
-  return Object.entries(costs).every(([k, v]) => store[k] >= v);
-}
-
 function applyEvolution(player, evoId) {
   const evo = EVOLUTIONS[evoId];
   if (!evo || !canBuy(player.resources, evo.costs)) return false;
@@ -160,28 +162,8 @@ function applyEvolution(player, evoId) {
   return true;
 }
 
-io.on('connection', (socket) => {
-  socket.on('join', ({ name }) => {
-    const nick = (name || '玩家').slice(0, 12);
-    players.set(socket.id, createPlayer(socket.id, nick));
-    socket.emit('welcome', { id: socket.id, world: WORLD, evolutions: EVOLUTIONS });
-  });
-
-  socket.on('input', (input) => {
-    const p = players.get(socket.id);
-    if (p) p.input = { ...p.input, ...input };
-  });
-
-  socket.on('evolve', ({ evoId }) => {
-    const p = players.get(socket.id);
-    if (p) applyEvolution(p, evoId);
-  });
-
-  socket.on('disconnect', () => players.delete(socket.id));
-});
-
-setInterval(() => {
-  for (const p of players.values()) {
+function tickRoom(room) {
+  for (const p of room.players.values()) {
     const dx = (p.input.right ? 1 : 0) - (p.input.left ? 1 : 0);
     const dy = (p.input.down ? 1 : 0) - (p.input.up ? 1 : 0);
     const len = Math.hypot(dx, dy) || 1;
@@ -191,7 +173,7 @@ setInterval(() => {
     if (p.cooldown > 0) p.cooldown -= 1;
     if (p.input.attack && p.cooldown === 0) {
       p.cooldown = 18;
-      for (const e of enemies) {
+      for (const e of room.enemies) {
         if (dist(p, e) < p.r + e.r + 18) {
           e.hp -= p.attack;
           if (e.hp <= 0) {
@@ -204,7 +186,7 @@ setInterval(() => {
           }
         }
       }
-      for (const other of players.values()) {
+      for (const other of room.players.values()) {
         if (other.id !== p.id && dist(p, other) < p.r + other.r + 12) {
           const killed = hitPlayer(other, p.attack + 4);
           if (killed) {
@@ -215,25 +197,63 @@ setInterval(() => {
       }
     }
 
-    for (let i = resources.length - 1; i >= 0; i--) {
-      if (dist(p, resources[i]) < p.r + 9) {
-        p.resources[resources[i].type] += resources[i].value;
-        resources.splice(i, 1);
+    for (let i = room.resources.length - 1; i >= 0; i--) {
+      if (dist(p, room.resources[i]) < p.r + 9) {
+        p.resources[room.resources[i].type] += room.resources[i].value;
+        room.resources.splice(i, 1);
       }
     }
   }
 
-  while (resources.length < 180) spawnResource(['protein', 'mineral', 'gas'][Math.floor(Math.random() * 3)]);
-  enemies.forEach(enemyBrain);
+  while (room.resources.length < 180) spawnResource(room, ['protein', 'mineral', 'gas'][Math.floor(Math.random() * 3)]);
+  room.enemies.forEach((e) => enemyBrain(room, e));
 
-  io.emit('state', {
-    players: Array.from(players.values()),
-    resources,
-    enemies,
+  io.to(room.roomId).emit('state', {
+    players: Array.from(room.players.values()),
+    resources: room.resources,
+    enemies: room.enemies,
     world: WORLD,
     t: Date.now(),
   });
-}, 1000 / 30);
+}
+
+io.on('connection', (socket) => {
+  socket.on('join', ({ name, roomId }) => {
+    const nick = (name || '玩家').slice(0, 12);
+    const room = (roomId || 'main').slice(0, 20);
+    socket.join(room);
+    const roomState = getRoomState(room);
+    roomState.players.set(socket.id, createPlayer(socket.id, nick, room));
+    socket.data.roomId = room;
+    socket.emit('welcome', { id: socket.id, roomId: room, world: WORLD, evolutions: EVOLUTIONS });
+  });
+
+  socket.on('input', (input) => {
+    const roomId = socket.data.roomId;
+    if (!roomId || !rooms.has(roomId)) return;
+    const p = rooms.get(roomId).players.get(socket.id);
+    if (p) p.input = { ...p.input, ...input };
+  });
+
+  socket.on('evolve', ({ evoId }) => {
+    const roomId = socket.data.roomId;
+    if (!roomId || !rooms.has(roomId)) return;
+    const p = rooms.get(roomId).players.get(socket.id);
+    if (p) applyEvolution(p, evoId);
+  });
+
+  socket.on('disconnect', () => {
+    const roomId = socket.data.roomId;
+    if (!roomId || !rooms.has(roomId)) return;
+    const room = rooms.get(roomId);
+    room.players.delete(socket.id);
+    if (room.players.size === 0) rooms.delete(roomId);
+  });
+});
+
+setInterval(() => {
+  rooms.forEach((room) => tickRoom(room));
+}, 1000 / TICK_RATE);
 
 server.listen(3000, () => {
   console.log('Server listening on http://localhost:3000');

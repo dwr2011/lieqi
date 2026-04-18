@@ -12,7 +12,9 @@
       <h1>细胞进化联机战场</h1>
       <p>每台电脑只操控一个玩家，支持多人联机（同房间/同服务器）。</p>
       <p>移动：WASD / 攻击：J / 进化：数字键 1-0</p>
-      <label>昵称 <input id="nameInput" maxlength="12" value="玩家" /></label>
+
+      <label>昵称 <input id="nameInput" maxlength="12" value="hope" /></label>
+      <label>房间 <input id="roomInput" maxlength="20" value="main" /></label>
       <button id="joinBtn">加入服务器</button>
       <div id="connStatus" class="badge">未连接</div>
 
@@ -23,12 +25,12 @@
 
       <section>
         <h3>进化方案（已写明资源需求）</h3>
-        <div id="evoList" class="scroll"></div>
+        <div id="evoList" class="scroll">连接后加载...</div>
       </section>
 
       <section>
         <h3>日志</h3>
-        <div id="log" class="scroll log"></div>
+        <div id="log" class="scroll log">等待加入服务器...</div>
       </section>
     </aside>
 
