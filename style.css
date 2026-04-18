@@ -1,0 +1,38 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Microsoft YaHei", sans-serif;
+  color: #ecf4ff;
+  background: radial-gradient(circle at top, #173063 0%, #0b1326 68%);
+}
+.layout { display: grid; grid-template-columns: 360px 1fr; min-height: 100vh; }
+.panel { padding: 14px; background: rgba(7, 13, 26, 0.93); border-right: 1px solid #2a3f68; }
+.game-wrap { padding: 10px; }
+canvas { width: 100%; height: calc(100vh - 20px); border: 1px solid #335b92; border-radius: 12px; background: #051225; }
+
+button {
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  margin: 8px 0;
+  background: #62f1d5;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+label { display: block; margin-top: 8px; }
+input {
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #3b5f98;
+  background: #122749;
+  color: #fff;
+}
+
+.scroll { max-height: 220px; overflow: auto; border: 1px solid #355b90; border-radius: 8px; padding: 8px; background: rgba(0,0,0,0.2); }
+.log { max-height: 160px; }
+.badge { padding: 6px 8px; background: #622e2e; border-radius: 8px; font-size: 0.9rem; margin-top: 8px; }
+.evo-item { border-bottom: 1px dashed #4269a1; padding: 6px 0; font-size: .9rem; }
+.evo-item:last-child { border-bottom: none; }
