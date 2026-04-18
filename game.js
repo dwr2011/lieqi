@@ -17,6 +17,21 @@ let evolutions = {};
 let camera = { x: 0, y: 0 };
 let inputTimer = null;
 
+const resourceName = { protein: '蛋白质', mineral: '矿物质', gas: '气体' };
+const evoName = {
+  exoskeleton: '外骨骼', lung: '肺化', toxin: '毒腺', fin: '鳍化', spores: '孢子化',
+  crab: '巨钳蟹', lizard: '疾走蜥蜴', jelly: '雷毒水母', ray: '深海鳐', beetle: '甲壳甲虫',
+};
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.max(320, Math.floor(rect.width * dpr));
+  canvas.height = Math.max(220, Math.floor(rect.height * dpr));
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resizeCanvas);
+
 function log(msg) {
   if (logEl.textContent.includes('等待加入服务器')) logEl.innerHTML = '';
   const d = document.createElement('div');
@@ -29,7 +44,8 @@ function drawEvolutionList() {
   const all = Object.entries(evolutions);
   evoList.innerHTML = all.map(([id, e], i) => {
     const hotkey = (i + 1) % 10;
-    return `<div class="evo-item"><b>[${hotkey}] ${id}</b><br>需求: 蛋白${e.costs.protein} / 矿物${e.costs.mineral} / 气体${e.costs.gas}</div>`;
+    const name = evoName[id] || id;
+    return `<div class="evo-item"><b>[${hotkey}] ${name}</b><br>需求: 蛋白质${e.costs.protein} / 矿物质${e.costs.mineral} / 气体${e.costs.gas}</div>`;
   }).join('');
 }
 
@@ -101,21 +117,24 @@ function drawForm(p, sx, sy) {
 }
 
 function render() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const viewW = canvas.clientWidth;
+  const viewH = canvas.clientHeight;
+
+  ctx.clearRect(0, 0, viewW, viewH);
   ctx.fillStyle = '#051a33';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, viewW, viewH);
 
   const me = state.players.find(p => p.id === myId);
   if (me) {
-    camera.x = Math.max(0, Math.min(world.width - canvas.width, me.x - canvas.width / 2));
-    camera.y = Math.max(0, Math.min(world.height - canvas.height, me.y - canvas.height / 2));
-    resourceBox.textContent = `protein:${me.resources.protein} mineral:${me.resources.mineral} gas:${me.resources.gas} | 形态:${me.form}`;
+    camera.x = Math.max(0, Math.min(world.width - viewW, me.x - viewW / 2));
+    camera.y = Math.max(0, Math.min(world.height - viewH, me.y - viewH / 2));
+    resourceBox.textContent = `${resourceName.protein}:${me.resources.protein} ${resourceName.mineral}:${me.resources.mineral} ${resourceName.gas}:${me.resources.gas} | 形态:${evoName[me.form] || me.form}`;
   }
 
   for (let gx = 0; gx < world.width; gx += 120) {
     for (let gy = 0; gy < world.height; gy += 120) {
       const s = worldToScreen(gx, gy);
-      if (s.x < -5 || s.y < -5 || s.x > canvas.width + 5 || s.y > canvas.height + 5) continue;
+      if (s.x < -5 || s.y < -5 || s.x > viewW + 5 || s.y > viewH + 5) continue;
       ctx.fillStyle = '#0b2a4e';
       ctx.fillRect(s.x, s.y, 2, 2);
     }
@@ -123,7 +142,7 @@ function render() {
 
   state.resources.forEach(r => {
     const s = worldToScreen(r.x, r.y);
-    if (s.x < -10 || s.y < -10 || s.x > canvas.width + 10 || s.y > canvas.height + 10) return;
+    if (s.x < -10 || s.y < -10 || s.x > viewW + 10 || s.y > viewH + 10) return;
     ctx.beginPath();
     ctx.arc(s.x, s.y, 6, 0, Math.PI * 2);
     ctx.fillStyle = r.type === 'protein' ? '#74ffb2' : r.type === 'mineral' ? '#f8d76f' : '#8fd3ff';
@@ -132,7 +151,7 @@ function render() {
 
   state.enemies.forEach(e => {
     const s = worldToScreen(e.x, e.y);
-    if (s.x < -30 || s.y < -30 || s.x > canvas.width + 30 || s.y > canvas.height + 30) return;
+    if (s.x < -30 || s.y < -30 || s.x > viewW + 30 || s.y > viewH + 30) return;
     ctx.beginPath();
     ctx.arc(s.x, s.y, e.r, 0, Math.PI * 2);
     ctx.fillStyle = e.aggro ? '#ff7373' : '#d58dff';
@@ -145,7 +164,7 @@ function render() {
 
   state.players.forEach(p => {
     const s = worldToScreen(p.x, p.y);
-    if (s.x < -40 || s.y < -40 || s.x > canvas.width + 40 || s.y > canvas.height + 40) return;
+    if (s.x < -40 || s.y < -40 || s.x > viewW + 40 || s.y > viewH + 40) return;
     drawForm(p, s.x, s.y);
     ctx.fillStyle = '#ffffff';
     ctx.font = '12px sans-serif';
@@ -175,7 +194,7 @@ function bindKeys() {
       const pick = idx === 0 ? list[9] : list[idx - 1];
       if (pick && socket) {
         socket.emit('evolve', { evoId: pick });
-        log(`尝试进化 -> ${pick}`);
+        log(`尝试进化 -> ${evoName[pick] || pick}`);
       }
     }
   });
@@ -186,6 +205,16 @@ function bindKeys() {
     if (e.key === 's') keys.s = false;
     if (e.key === 'd') keys.d = false;
     if (e.key.toLowerCase() === 'j') keys.attack = false;
+  });
+
+  canvas.addEventListener('mousedown', (e) => {
+    if (e.button === 0) keys.attack = true;
+  });
+  canvas.addEventListener('mouseup', (e) => {
+    if (e.button === 0) keys.attack = false;
+  });
+  canvas.addEventListener('mouseleave', () => {
+    keys.attack = false;
   });
 }
 
@@ -225,5 +254,6 @@ function connect() {
 }
 
 bindKeys();
+resizeCanvas();
 joinBtn.onclick = connect;
 requestAnimationFrame(function raf() { render(); requestAnimationFrame(raf); });
