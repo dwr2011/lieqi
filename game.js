@@ -1,350 +1,224 @@
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-const logBox = document.getElementById('log');
-const p1Panel = document.getElementById('p1Panel');
-const p2Panel = document.getElementById('p2Panel');
-const modal = document.getElementById('choiceModal');
-const choiceTitle = document.getElementById('choiceTitle');
-const choiceButtons = document.getElementById('choiceButtons');
+const logEl = document.getElementById('log');
+const joinBtn = document.getElementById('joinBtn');
+const nameInput = document.getElementById('nameInput');
+const connStatus = document.getElementById('connStatus');
+const resourceBox = document.getElementById('resourceBox');
+const evoList = document.getElementById('evoList');
 
-const W = canvas.width;
-const H = canvas.height;
-let pausedForChoice = false;
+const keys = { w: false, a: false, s: false, d: false, attack: false };
+let socket;
+let myId = null;
+let world = { width: 4200, height: 3000 };
+let state = { players: [], enemies: [], resources: [] };
+let evolutions = {};
+let camera = { x: 0, y: 0 };
 
-const keys = new Set();
-document.addEventListener('keydown', (e) => {
-  keys.add(e.key.toLowerCase());
-  keys.add(e.key);
-});
-document.addEventListener('keyup', (e) => {
-  keys.delete(e.key.toLowerCase());
-  keys.delete(e.key);
-});
-
-const branches = {
-  exoskeleton: { name: '外骨骼', hp: 45, armor: 0.2, speed: -0.15, attack: 2, stage2: ['crab', 'beetle'] },
-  lung: { name: '肺', hp: 10, armor: 0, speed: 0.15, attack: 1, stage2: ['frog', 'lizard'] },
-  toxin: { name: '毒腺', hp: 0, armor: 0, speed: 0.05, attack: 4, stage2: ['jelly', 'viper'] },
-};
-
-const finals = {
-  crab: { name: '巨钳蟹', bonus: { hp: 40, attack: 5, speed: -0.05, armor: 0.15 } },
-  beetle: { name: '甲壳甲虫', bonus: { hp: 28, attack: 7, speed: 0.02, armor: 0.12 } },
-  frog: { name: '沼泽跃蛙', bonus: { hp: 16, attack: 6, speed: 0.22, armor: 0.03 } },
-  lizard: { name: '疾走蜥蜴', bonus: { hp: 20, attack: 8, speed: 0.2, armor: 0.05 } },
-  jelly: { name: '雷毒水母', bonus: { hp: 15, attack: 10, speed: 0.1, armor: 0.02 } },
-  viper: { name: '突袭毒蛇', bonus: { hp: 12, attack: 12, speed: 0.18, armor: 0.0 } },
-};
-
-function makePlayer(name, color, controls, x, y) {
-  return {
-    name,
-    color,
-    controls,
-    x,
-    y,
-    r: 18,
-    hp: 120,
-    maxHp: 120,
-    baseSpeed: 2.2,
-    attack: 12,
-    armor: 0,
-    resource: 0,
-    stage: 0,
-    branch: null,
-    finalForm: null,
-    facing: { x: 1, y: 0 },
-    dashCd: 0,
-    attackCd: 0,
-    pvpKills: 0,
-    pveKills: 0,
-  };
+function log(msg) {
+  const d = document.createElement('div');
+  d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logEl.prepend(d);
+  if (logEl.childNodes.length > 15) logEl.lastChild.remove();
 }
 
-const p1 = makePlayer('玩家1', '#4de9ff', { up: 'w', down: 's', left: 'a', right: 'd', dash: 'f', atk: 'g', evo: 'r' }, 120, H / 2);
-const p2 = makePlayer('玩家2', '#ff8de6', { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', dash: '/', atk: '.', evo: 'Shift' }, W - 120, H / 2);
-const players = [p1, p2];
-
-const resources = [];
-const enemies = [];
-const particles = [];
-
-function spawnResource() {
-  resources.push({ x: 30 + Math.random() * (W - 60), y: 30 + Math.random() * (H - 60), r: 7, value: 1 + (Math.random() > 0.8 ? 2 : 0) });
+function drawEvolutionList() {
+  const all = Object.entries(evolutions);
+  evoList.innerHTML = all.map(([id, e], i) => {
+    const hotkey = (i + 1) % 10;
+    return `<div class="evo-item"><b>[${hotkey}] ${id}</b><br>需求: 蛋白${e.costs.protein} / 矿物${e.costs.mineral} / 气体${e.costs.gas}</div>`;
+  }).join('');
 }
 
-function spawnEnemy() {
-  const elite = Math.random() > 0.85;
-  enemies.push({
-    x: 40 + Math.random() * (W - 80),
-    y: 40 + Math.random() * (H - 80),
-    r: elite ? 18 : 13,
-    hp: elite ? 90 : 46,
-    maxHp: elite ? 90 : 46,
-    speed: elite ? 1.1 : 1.45,
-    atk: elite ? 18 : 11,
-    color: elite ? '#ffb84d' : '#ff5f72',
-    elite,
-  });
+function worldToScreen(x, y) {
+  return { x: x - camera.x, y: y - camera.y };
 }
 
-for (let i = 0; i < 36; i++) spawnResource();
-for (let i = 0; i < 9; i++) spawnEnemy();
+function drawForm(p, sx, sy) {
+  const r = p.r;
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
 
-function addLog(msg) {
-  const row = document.createElement('div');
-  row.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-  logBox.prepend(row);
-  while (logBox.childNodes.length > 16) logBox.lastChild.remove();
+  if (p.form === 'crab') {
+    ctx.fillStyle = '#ff8e70';
+    ctx.beginPath();
+    ctx.rect(-r, -r * 0.7, r * 2, r * 1.4);
+    ctx.fill();
+    ctx.stroke();
+  } else if (p.form === 'lizard') {
+    ctx.fillStyle = '#96ff84';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 1.4, r * 0.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-r * 1.4, 0);
+    ctx.lineTo(-r * 2.4, r * 0.2);
+    ctx.stroke();
+  } else if (p.form === 'jelly') {
+    ctx.fillStyle = '#8cd8ff';
+    ctx.beginPath();
+    ctx.arc(0, -r * 0.2, r, Math.PI, 0);
+    ctx.lineTo(r, r * 0.7);
+    ctx.lineTo(-r, r * 0.7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (p.form === 'beetle') {
+    ctx.fillStyle = '#7c5cff';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r, r * 1.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 1.2);
+    ctx.lineTo(0, r * 1.2);
+    ctx.stroke();
+  } else if (p.form === 'ray') {
+    ctx.fillStyle = '#75d5ff';
+    ctx.beginPath();
+    ctx.moveTo(-r * 1.4, 0);
+    ctx.lineTo(0, -r * 0.8);
+    ctx.lineTo(r * 1.4, 0);
+    ctx.lineTo(0, r * 0.8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = p.id === myId ? '#4de9ff' : '#ff9ff1';
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
-function dist(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#051a33';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-function normalize(x, y) {
-  const len = Math.hypot(x, y) || 1;
-  return { x: x / len, y: y / len };
-}
+  const me = state.players.find(p => p.id === myId);
+  if (me) {
+    camera.x = Math.max(0, Math.min(world.width - canvas.width, me.x - canvas.width / 2));
+    camera.y = Math.max(0, Math.min(world.height - canvas.height, me.y - canvas.height / 2));
+    resourceBox.textContent = `protein:${me.resources.protein} mineral:${me.resources.mineral} gas:${me.resources.gas} | 形态:${me.form}`;
+  }
 
-function damage(target, raw, sourceName) {
-  const reduced = Math.max(1, Math.floor(raw * (1 - target.armor)));
-  target.hp -= reduced;
-  particles.push({ x: target.x, y: target.y, text: `-${reduced}`, t: 40, color: '#ffd2d2' });
-  if (target.hp <= 0) {
-    target.hp = target.maxHp;
-    target.x = 90 + Math.random() * (W - 180);
-    target.y = 90 + Math.random() * (H - 180);
-    addLog(`${sourceName} 击败了 ${target.name}（PVP）`);
-    const killer = players.find((p) => p.name === sourceName);
-    if (killer) {
-      killer.pvpKills += 1;
-      killer.resource += 10;
+  for (let gx = 0; gx < world.width; gx += 120) {
+    for (let gy = 0; gy < world.height; gy += 120) {
+      const s = worldToScreen(gx, gy);
+      if (s.x < -5 || s.y < -5 || s.x > canvas.width + 5 || s.y > canvas.height + 5) continue;
+      ctx.fillStyle = '#0b2a4e';
+      ctx.fillRect(s.x, s.y, 2, 2);
     }
   }
+
+  state.resources.forEach(r => {
+    const s = worldToScreen(r.x, r.y);
+    if (s.x < -10 || s.y < -10 || s.x > canvas.width + 10 || s.y > canvas.height + 10) return;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = r.type === 'protein' ? '#74ffb2' : r.type === 'mineral' ? '#f8d76f' : '#8fd3ff';
+    ctx.fill();
+  });
+
+  state.enemies.forEach(e => {
+    const s = worldToScreen(e.x, e.y);
+    if (s.x < -30 || s.y < -30 || s.x > canvas.width + 30 || s.y > canvas.height + 30) return;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, e.r, 0, Math.PI * 2);
+    ctx.fillStyle = e.aggro ? '#ff7373' : '#d58dff';
+    ctx.fill();
+    ctx.fillStyle = '#230026';
+    ctx.fillRect(s.x - 16, s.y - 24, 32, 4);
+    ctx.fillStyle = '#ff95b6';
+    ctx.fillRect(s.x - 16, s.y - 24, (e.hp / e.maxHp) * 32, 4);
+  });
+
+  state.players.forEach(p => {
+    const s = worldToScreen(p.x, p.y);
+    if (s.x < -40 || s.y < -40 || s.x > canvas.width + 40 || s.y > canvas.height + 40) return;
+    drawForm(p, s.x, s.y);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '12px sans-serif';
+    ctx.fillText(`${p.name}(${p.pveKills}/${p.pvpKills})`, s.x - 28, s.y - 26);
+  });
+
+  ctx.fillStyle = '#d6ecff';
+  ctx.fillText(`地图: ${world.width} x ${world.height} | 在线: ${state.players.length}`, 12, 20);
 }
 
-function doAttack(player) {
-  if (player.attackCd > 0) return;
-  player.attackCd = 28;
-  const arcRange = player.r + 30;
+function sendInput() {
+  if (!socket) return;
+  socket.emit('input', { up: keys.w, down: keys.s, left: keys.a, right: keys.d, attack: keys.attack });
+}
 
-  enemies.forEach((e) => {
-    if (dist(player, e) < arcRange) {
-      e.hp -= player.attack;
-      particles.push({ x: e.x, y: e.y, text: `-${player.attack}`, t: 30, color: '#fff1ac' });
-      if (e.hp <= 0) {
-        player.pveKills += 1;
-        player.resource += e.elite ? 12 : 5;
-        particles.push({ x: e.x, y: e.y, text: '+资源', t: 40, color: '#9effd0' });
-        e.hp = e.maxHp;
-        e.x = 50 + Math.random() * (W - 100);
-        e.y = 50 + Math.random() * (H - 100);
+function bindKeys() {
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'w') keys.w = true;
+    if (e.key === 'a') keys.a = true;
+    if (e.key === 's') keys.s = true;
+    if (e.key === 'd') keys.d = true;
+    if (e.key.toLowerCase() === 'j') keys.attack = true;
+
+    const idx = Number(e.key);
+    if (!Number.isNaN(idx) && idx >= 0 && idx <= 9) {
+      const list = Object.keys(evolutions);
+      const pick = idx === 0 ? list[9] : list[idx - 1];
+      if (pick && socket) {
+        socket.emit('evolve', { evoId: pick });
+        log(`尝试进化 -> ${pick}`);
       }
     }
   });
 
-  const other = players.find((p) => p !== player);
-  if (dist(player, other) < arcRange) {
-    damage(other, player.attack + 3, player.name);
-  }
-}
-
-function openEvolutionChoice(player, options, title) {
-  pausedForChoice = true;
-  modal.classList.remove('hidden');
-  choiceTitle.textContent = `${player.name} - ${title}`;
-  choiceButtons.innerHTML = '';
-  options.forEach((op) => {
-    const btn = document.createElement('button');
-    btn.textContent = op.label;
-    btn.onclick = () => {
-      op.apply();
-      modal.classList.add('hidden');
-      pausedForChoice = false;
-    };
-    choiceButtons.appendChild(btn);
+  document.addEventListener('keyup', (e) => {
+    if (e.key === 'w') keys.w = false;
+    if (e.key === 'a') keys.a = false;
+    if (e.key === 's') keys.s = false;
+    if (e.key === 'd') keys.d = false;
+    if (e.key.toLowerCase() === 'j') keys.attack = false;
   });
 }
 
-function tryEvolve(player) {
-  if (player.stage === 0 && player.resource >= 25) {
-    openEvolutionChoice(
-      player,
-      Object.entries(branches).map(([k, cfg]) => ({
-        label: `${cfg.name}（HP+${cfg.hp} 攻击+${cfg.attack}）`,
-        apply: () => {
-          player.stage = 1;
-          player.branch = k;
-          player.maxHp += cfg.hp;
-          player.hp = player.maxHp;
-          player.attack += cfg.attack;
-          player.armor += cfg.armor;
-          player.baseSpeed += cfg.speed;
-          player.resource -= 25;
-          addLog(`${player.name} 进化到：${cfg.name}`);
-        },
-      })),
-      '第一次进化：器官方向'
-    );
-  } else if (player.stage === 1 && player.resource >= 60) {
-    const candidates = branches[player.branch].stage2;
-    openEvolutionChoice(
-      player,
-      candidates.map((id) => ({
-        label: finals[id].name,
-        apply: () => {
-          const b = finals[id].bonus;
-          player.stage = 2;
-          player.finalForm = id;
-          player.maxHp += b.hp;
-          player.hp = player.maxHp;
-          player.attack += b.attack;
-          player.armor += b.armor;
-          player.baseSpeed += b.speed;
-          player.resource -= 60;
-          addLog(`${player.name} 终极进化为：${finals[id].name}`);
-        },
-      })),
-      '第二次进化：生物形态'
-    );
-  }
-}
+function connect() {
+  socket = io();
+  connStatus.textContent = '连接中...';
+  connStatus.style.background = '#5a4d1b';
 
-function updatePlayer(player) {
-  let vx = 0;
-  let vy = 0;
-
-  if (keys.has(player.controls.up)) vy -= 1;
-  if (keys.has(player.controls.down)) vy += 1;
-  if (keys.has(player.controls.left)) vx -= 1;
-  if (keys.has(player.controls.right)) vx += 1;
-
-  const d = normalize(vx, vy);
-  if (vx || vy) player.facing = d;
-
-  const speed = player.baseSpeed + (player.dashCd > 45 ? 2.8 : 0);
-  player.x += d.x * speed;
-  player.y += d.y * speed;
-  player.x = Math.max(player.r, Math.min(W - player.r, player.x));
-  player.y = Math.max(player.r, Math.min(H - player.r, player.y));
-
-  if (keys.has(player.controls.dash) && player.dashCd <= 0) player.dashCd = 60;
-  if (player.dashCd > 0) player.dashCd -= 1;
-
-  if (keys.has(player.controls.atk)) doAttack(player);
-  if (keys.has(player.controls.evo)) tryEvolve(player);
-  if (player.attackCd > 0) player.attackCd -= 1;
-
-  for (let i = resources.length - 1; i >= 0; i--) {
-    if (dist(player, resources[i]) <= player.r + resources[i].r) {
-      player.resource += resources[i].value;
-      particles.push({ x: resources[i].x, y: resources[i].y, text: `+${resources[i].value}`, t: 25, color: '#74ffcc' });
-      resources.splice(i, 1);
-      if (resources.length < 34) spawnResource();
-    }
-  }
-}
-
-function updateEnemies() {
-  enemies.forEach((e) => {
-    const target = players.sort((a, b) => dist(a, e) - dist(b, e))[0];
-    const d = normalize(target.x - e.x, target.y - e.y);
-    e.x += d.x * e.speed;
-    e.y += d.y * e.speed;
-
-    if (dist(e, target) < e.r + target.r) damage(target, e.atk, `野生${e.elite ? '精英' : ''}掠食者`);
-  });
-}
-
-function drawEntityCircle(o, color, stroke = '#fff') {
-  ctx.beginPath();
-  ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.strokeStyle = stroke;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-}
-
-function draw() {
-  ctx.clearRect(0, 0, W, H);
-
-  ctx.fillStyle = '#05213f';
-  ctx.fillRect(0, 0, W, H);
-
-  for (let i = 0; i < 140; i++) {
-    ctx.fillStyle = i % 7 === 0 ? '#0c335e' : '#0a2748';
-    ctx.fillRect((i * 73) % W, (i * 29) % H, 2, 2);
-  }
-
-  resources.forEach((r) => {
-    drawEntityCircle(r, '#6effc9', '#adffe6');
+  socket.on('connect', () => {
+    socket.emit('join', { name: nameInput.value.trim() || '玩家' });
   });
 
-  enemies.forEach((e) => {
-    drawEntityCircle(e, e.color, '#ffd0cf');
-    ctx.fillStyle = '#290000';
-    ctx.fillRect(e.x - 15, e.y - e.r - 10, 30, 4);
-    ctx.fillStyle = '#ff6f7a';
-    ctx.fillRect(e.x - 15, e.y - e.r - 10, (e.hp / e.maxHp) * 30, 4);
+  socket.on('welcome', (payload) => {
+    myId = payload.id;
+    world = payload.world;
+    evolutions = payload.evolutions;
+    drawEvolutionList();
+    connStatus.textContent = '已连接';
+    connStatus.style.background = '#1f5b34';
+    log('连接成功，开始联机。');
   });
 
-  players.forEach((p) => {
-    drawEntityCircle(p, p.color, '#ffffff');
-    ctx.fillStyle = '#00131f';
-    ctx.fillRect(p.x - 20, p.y - p.r - 10, 40, 5);
-    ctx.fillStyle = '#69ffba';
-    ctx.fillRect(p.x - 20, p.y - p.r - 10, (p.hp / p.maxHp) * 40, 5);
+  socket.on('state', (s) => {
+    state = s;
+    render();
   });
 
-  particles.forEach((pt) => {
-    ctx.fillStyle = pt.color;
-    ctx.font = '14px sans-serif';
-    ctx.fillText(pt.text, pt.x, pt.y - (40 - pt.t) * 0.4);
-    pt.t -= 1;
+  socket.on('disconnect', () => {
+    connStatus.textContent = '已断开';
+    connStatus.style.background = '#622e2e';
+    log('连接断开。');
   });
-  for (let i = particles.length - 1; i >= 0; i--) if (particles[i].t <= 0) particles.splice(i, 1);
 
-  const winY = 26;
-  ctx.font = '15px sans-serif';
-  players.forEach((p, i) => {
-    ctx.fillStyle = p.color;
-    const finalName = p.finalForm ? finals[p.finalForm].name : (p.branch ? branches[p.branch].name : '原始细胞');
-    ctx.fillText(`${p.name} | 资源:${p.resource} | 形态:${finalName} | PVE:${p.pveKills} PVP:${p.pvpKills}`, 12, winY + i * 22);
-  });
+  setInterval(sendInput, 1000 / 20);
 }
 
-function renderPanels() {
-  const render = (p) => {
-    const stageName = p.finalForm ? finals[p.finalForm].name : p.branch ? branches[p.branch].name : '未进化';
-    return `
-      <strong style="color:${p.color}">${p.name}</strong><br>
-      生命：${p.hp}/${p.maxHp}<br>
-      攻击：${p.attack} ｜ 护甲：${(p.armor * 100).toFixed(0)}%<br>
-      资源：${p.resource}<br>
-      进化阶段：${p.stage}（${stageName}）<br>
-      战绩：PVE ${p.pveKills} / PVP ${p.pvpKills}
-    `;
-  };
-  p1Panel.innerHTML = render(p1);
-  p2Panel.innerHTML = render(p2);
-}
-
-function loop() {
-  if (!pausedForChoice) {
-    updatePlayer(p1);
-    updatePlayer(p2);
-    updateEnemies();
-  }
-
-  if (Math.random() > 0.985 && resources.length < 44) spawnResource();
-  if (Math.random() > 0.992 && enemies.length < 14) spawnEnemy();
-
-  draw();
-  renderPanels();
-  requestAnimationFrame(loop);
-}
-
-addLog('游戏开始：采集资源并击败敌人，按进化键进行分支进化。');
-loop();
+bindKeys();
+joinBtn.onclick = connect;
+requestAnimationFrame(function raf() { render(); requestAnimationFrame(raf); });

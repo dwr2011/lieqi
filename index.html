@@ -3,34 +3,41 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>细胞进化竞技场</title>
+  <title>细胞进化联机战场</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <main class="layout">
-    <section class="panel">
-      <h1>二维细胞进化 PVE + PVP</h1>
-      <p>玩家1：WASD 移动，F 冲刺，G 普攻，R 进化</p>
-      <p>玩家2：方向键移动，/ 冲刺，. 普攻，Shift 进化</p>
-      <p>目标：采集资源并选择进化方向，最终进化成不同生物形态。</p>
-      <div id="log" class="log"></div>
-      <div class="evolution-board">
-        <div id="p1Panel" class="evo-card"></div>
-        <div id="p2Panel" class="evo-card"></div>
-      </div>
-    </section>
+    <aside class="panel">
+      <h1>细胞进化联机战场</h1>
+      <p>每台电脑只操控一个玩家，支持多人联机（同房间/同服务器）。</p>
+      <p>移动：WASD / 攻击：J / 进化：数字键 1-0</p>
+      <label>昵称 <input id="nameInput" maxlength="12" value="玩家" /></label>
+      <button id="joinBtn">加入服务器</button>
+      <div id="connStatus" class="badge">未连接</div>
+
+      <section>
+        <h3>资源</h3>
+        <div id="resourceBox">protein:0 mineral:0 gas:0</div>
+      </section>
+
+      <section>
+        <h3>进化方案（已写明资源需求）</h3>
+        <div id="evoList" class="scroll"></div>
+      </section>
+
+      <section>
+        <h3>日志</h3>
+        <div id="log" class="scroll log"></div>
+      </section>
+    </aside>
+
     <section class="game-wrap">
-      <canvas id="game" width="1000" height="620"></canvas>
+      <canvas id="game" width="1200" height="700"></canvas>
     </section>
   </main>
 
-  <div id="choiceModal" class="modal hidden">
-    <div class="modal-content">
-      <h2 id="choiceTitle">选择进化</h2>
-      <div id="choiceButtons" class="choice-buttons"></div>
-    </div>
-  </div>
-
+  <script src="/socket.io/socket.io.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
