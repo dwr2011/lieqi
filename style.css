@@ -8,7 +8,7 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: 370px 1fr;
+  grid-template-columns: 390px 1fr;
   min-height: 100vh;
 }
 
@@ -63,7 +63,7 @@ button {
 }
 
 label { display: block; margin-top: 8px; }
-input {
+input, select {
   width: 100%;
   padding: 8px;
   border-radius: 8px;
@@ -76,6 +76,13 @@ input {
   margin: 0;
   padding-left: 18px;
   line-height: 1.65;
+}
+
+.hint {
+  display: block;
+  color: #9fd0ff;
+  margin-top: 6px;
+  line-height: 1.4;
 }
 
 #hpBox, #resourceBox {
@@ -103,6 +110,8 @@ input {
 
 .subbtn { background: #2d4f88; color: #e8f1ff; }
 .save { background: #245f40; }
+.claim { background: #675322; }
+.build { background: #4a2f71; }
 
 @media (max-width: 980px) {
   .layout { grid-template-columns: 1fr; }

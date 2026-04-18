@@ -4,6 +4,9 @@ const logEl = document.getElementById('log');
 const joinBtn = document.getElementById('joinBtn');
 const teamBtn = document.getElementById('teamBtn');
 const saveBtn = document.getElementById('saveBtn');
+const tpBtn = document.getElementById('tpBtn');
+const claimBtn = document.getElementById('claimBtn');
+const buildBtn = document.getElementById('buildBtn');
 const nameInput = document.getElementById('nameInput');
 const connStatus = document.getElementById('connStatus');
 const resourceBox = document.getElementById('resourceBox');
@@ -12,12 +15,14 @@ const evoList = document.getElementById('evoList');
 const roomInput = document.getElementById('roomInput');
 const teamInput = document.getElementById('teamInput');
 const teamBox = document.getElementById('teamBox');
+const tpTarget = document.getElementById('tpTarget');
+const buildType = document.getElementById('buildType');
 
 const keys = { w: false, a: false, s: false, d: false, attack: false };
 let socket;
 let myId = null;
 let world = { width: 4200, height: 3000 };
-let state = { players: [], enemies: [], resources: [] };
+let state = { players: [], enemies: [], resources: [], claims: [], structures: [] };
 let evolutions = {};
 let availableEvos = [];
 let camera = { x: 0, y: 0 };
@@ -41,7 +46,7 @@ function log(msg) {
   const d = document.createElement('div');
   d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
   logEl.prepend(d);
-  if (logEl.childNodes.length > 15) logEl.lastChild.remove();
+  if (logEl.childNodes.length > 20) logEl.lastChild.remove();
 }
 
 function statText(e) {
@@ -78,6 +83,14 @@ function renderTeamInfo(me) {
   if (!me) return;
   const mates = state.players.filter((p) => p.teamId === me.teamId);
   teamBox.innerHTML = `队伍：<b>${me.teamId || 'solo'}</b><br>成员：${mates.map((m) => m.name).join('、')}`;
+
+  const current = tpTarget.value;
+  const options = mates
+    .filter((m) => m.id !== me.id)
+    .map((m) => `<option value="${m.id}">${m.name}</option>`)
+    .join('');
+  tpTarget.innerHTML = options || '<option value="">暂无队友</option>';
+  if (current && tpTarget.querySelector(`option[value="${current}"]`)) tpTarget.value = current;
 }
 
 function worldToScreen(x, y) {
@@ -165,6 +178,13 @@ function getSmoothPos(p) {
   return current;
 }
 
+function teamColor(teamId) {
+  let hash = 0;
+  for (let i = 0; i < teamId.length; i++) hash = ((hash << 5) - hash + teamId.charCodeAt(i)) | 0;
+  const hue = Math.abs(hash) % 360;
+  return `hsla(${hue}, 85%, 60%, 0.18)`;
+}
+
 function render() {
   const viewW = canvas.clientWidth;
   const viewH = canvas.clientHeight;
@@ -192,6 +212,16 @@ function render() {
     }
   }
 
+  state.claims.forEach((c) => {
+    const s = worldToScreen(c.x, c.y);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, c.r, 0, Math.PI * 2);
+    ctx.fillStyle = teamColor(c.teamId || 'solo');
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(199,233,255,0.45)';
+    ctx.stroke();
+  });
+
   state.resources.forEach((r) => {
     const s = worldToScreen(r.x, r.y);
     if (s.x < -10 || s.y < -10 || s.x > viewW + 10 || s.y > viewH + 10) return;
@@ -199,6 +229,26 @@ function render() {
     ctx.arc(s.x, s.y, 6, 0, Math.PI * 2);
     ctx.fillStyle = r.type === 'protein' ? '#74ffb2' : r.type === 'mineral' ? '#f8d76f' : '#8fd3ff';
     ctx.fill();
+  });
+
+  state.structures.forEach((st) => {
+    const s = worldToScreen(st.x, st.y);
+    if (s.x < -30 || s.y < -30 || s.x > viewW + 30 || s.y > viewH + 30) return;
+    ctx.strokeStyle = '#d8ecff';
+    ctx.lineWidth = 2;
+    if (st.type === 'turret') {
+      ctx.fillStyle = '#c08bff';
+      ctx.fillRect(s.x - 9, s.y - 9, 18, 18);
+      ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x + 10, s.y - 10); ctx.stroke();
+    } else if (st.type === 'healer') {
+      ctx.fillStyle = '#77ffc2';
+      ctx.beginPath(); ctx.arc(s.x, s.y, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(s.x - 6, s.y); ctx.lineTo(s.x + 6, s.y); ctx.moveTo(s.x, s.y - 6); ctx.lineTo(s.x, s.y + 6); ctx.stroke();
+    } else {
+      ctx.fillStyle = '#ffd188';
+      ctx.beginPath(); ctx.rect(s.x - 10, s.y - 6, 20, 12); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(s.x, s.y - 6); ctx.lineTo(s.x, s.y - 13); ctx.stroke();
+    }
   });
 
   state.enemies.forEach((e) => {
@@ -230,7 +280,7 @@ function render() {
   });
 
   ctx.fillStyle = '#d6ecff';
-  ctx.fillText(`地图: ${world.width} x ${world.height} | 在线: ${state.players.length}`, 12, 20);
+  ctx.fillText(`地图: ${world.width} x ${world.height} | 在线: ${state.players.length} | 领地: ${state.claims.length} | 建筑: ${state.structures.length}`, 12, 20);
 }
 
 function sendInput() {
@@ -250,9 +300,7 @@ function bindKeys() {
     const idx = Number(e.key);
     if (!Number.isNaN(idx) && idx >= 0 && idx <= 9) {
       const pick = idx === 0 ? availableEvos[9] : availableEvos[idx - 1];
-      if (pick && socket) {
-        socket.emit('evolve', { evoId: pick });
-      }
+      if (pick && socket) socket.emit('evolve', { evoId: pick });
     }
   });
 
@@ -315,8 +363,13 @@ function connect() {
     }
   });
 
-  socket.on('saved', ({ at }) => {
-    log(`存档成功：${new Date(at).toLocaleTimeString()}`);
+  socket.on('saved', ({ at, reason }) => {
+    const kind = reason === 'manual' ? '手动' : '自动';
+    log(`${kind}存档成功：${new Date(at).toLocaleTimeString()}`);
+  });
+
+  socket.on('actionResult', ({ ok, msg }) => {
+    log(`${ok ? '成功' : '失败'}：${msg}`);
   });
 
   socket.on('disconnect', () => {
@@ -339,6 +392,22 @@ teamBtn.onclick = () => {
 saveBtn.onclick = () => {
   if (!socket) return log('请先连接服务器。');
   socket.emit('saveProgress');
+};
+
+tpBtn.onclick = () => {
+  if (!socket) return log('请先连接服务器。');
+  if (!tpTarget.value) return log('暂无可传送队友。');
+  socket.emit('teamTeleport', { targetId: tpTarget.value });
+};
+
+claimBtn.onclick = () => {
+  if (!socket) return log('请先连接服务器。');
+  socket.emit('claimTerritory');
+};
+
+buildBtn.onclick = () => {
+  if (!socket) return log('请先连接服务器。');
+  socket.emit('buildStructure', { type: buildType.value });
 };
 
 bindKeys();

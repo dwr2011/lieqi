@@ -22,7 +22,29 @@
           <button id="teamBtn" class="subbtn">切换队伍</button>
           <button id="saveBtn" class="subbtn save">立即存档</button>
         </div>
+        <small class="hint">自动存档：每15秒 + 进化/建造/圈地/传送后 + 断线时。</small>
         <div id="connStatus" class="badge">未连接</div>
+      </section>
+
+      <section class="card">
+        <h3>组队战术</h3>
+        <label>队友传送目标
+          <select id="tpTarget"><option value="">暂无队友</option></select>
+        </label>
+        <button id="tpBtn" class="subbtn">传送到队友（消耗气体6）</button>
+        <button id="claimBtn" class="subbtn claim">圈领地（20蛋白/20矿物/10气体）</button>
+      </section>
+
+      <section class="card">
+        <h3>建造</h3>
+        <label>建筑类型
+          <select id="buildType">
+            <option value="turret">炮塔（16蛋白/16矿物/6气体）</option>
+            <option value="healer">治疗站（10蛋白/14矿物/12气体）</option>
+            <option value="extractor">萃取器（8蛋白/18矿物/8气体）</option>
+          </select>
+        </label>
+        <button id="buildBtn" class="subbtn build">在当前位置建造</button>
       </section>
 
       <section class="card">
