@@ -17,6 +17,9 @@ function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 
 const EVOLUTIONS = {
+  photosynthesis: { costs: { protein: 2, mineral: 2, gas: 2 }, bonus: { maxHp: 10, armor: 0.03, attack: 0, speed: 0.12 }, form: 'photo_cell' },
+  attack_organelle: { costs: { protein: 5, mineral: 2, gas: 1 }, bonus: { maxHp: 6, armor: 0.02, attack: 5, speed: 0.05 }, form: 'spike_cell' },
+  multicell: { costs: { protein: 6, mineral: 5, gas: 3 }, bonus: { maxHp: 24, armor: 0.08, attack: 2, speed: -0.02 }, form: 'cluster_cell' },
   exoskeleton: { costs: { protein: 8, mineral: 16, gas: 2 }, bonus: { maxHp: 50, armor: 0.18, attack: 3, speed: -0.2 }, form: 'armored_cell' },
   lung: { costs: { protein: 14, mineral: 3, gas: 12 }, bonus: { maxHp: 16, armor: 0.03, attack: 2, speed: 0.35 }, form: 'aero_cell' },
   toxin: { costs: { protein: 10, mineral: 5, gas: 12 }, bonus: { maxHp: 8, armor: 0.04, attack: 7, speed: 0.1 }, form: 'toxic_cell' },
@@ -34,30 +37,14 @@ function canBuy(store, costs) {
 }
 
 function spawnResource(room, type) {
-  room.resources.push({
-    id: Math.random().toString(36).slice(2),
-    x: rand(30, WORLD.width - 30),
-    y: rand(30, WORLD.height - 30),
-    type,
-    value: 1 + (Math.random() > 0.85 ? 1 : 0),
-  });
+  room.resources.push({ id: Math.random().toString(36).slice(2), x: rand(30, WORLD.width - 30), y: rand(30, WORLD.height - 30), type, value: 1 + (Math.random() > 0.85 ? 1 : 0) });
 }
 
 function spawnEnemy(room) {
   room.enemies.push({
-    id: Math.random().toString(36).slice(2),
-    x: rand(100, WORLD.width - 100),
-    y: rand(100, WORLD.height - 100),
-    r: 18,
-    hp: 120,
-    maxHp: 120,
-    speed: 1.2,
-    attack: 10,
-    state: 'wander',
-    stateTick: 50,
-    dirX: rand(-1, 1),
-    dirY: rand(-1, 1),
-    aggro: null,
+    id: Math.random().toString(36).slice(2), x: rand(100, WORLD.width - 100), y: rand(100, WORLD.height - 100),
+    r: 18, hp: 120, maxHp: 120, speed: 1.2, attack: 10,
+    state: 'wander', stateTick: 50, dirX: rand(-1, 1), dirY: rand(-1, 1), aggro: null,
   });
 }
 
@@ -71,23 +58,12 @@ function getRoomState(roomId) {
   return rooms.get(roomId);
 }
 
-function createPlayer(id, name, roomId) {
+function createPlayer(id, name, roomId, teamId = 'solo') {
   return {
-    id,
-    roomId,
-    name,
-    x: rand(200, WORLD.width - 200),
-    y: rand(200, WORLD.height - 200),
-    r: 20,
-    hp: 150,
-    maxHp: 150,
-    speed: 2.2,
-    attack: 14,
-    armor: 0,
-    form: 'cell',
-    branch: null,
-    pveKills: 0,
-    pvpKills: 0,
+    id, roomId, teamId, name,
+    x: rand(200, WORLD.width - 200), y: rand(200, WORLD.height - 200),
+    r: 20, hp: 150, maxHp: 150, speed: 3.2, attack: 14, armor: 0,
+    form: 'cell', branch: null, pveKills: 0, pvpKills: 0,
     resources: { protein: 0, mineral: 0, gas: 0 },
     input: { up: false, down: false, left: false, right: false, attack: false },
     cooldown: 0,
@@ -120,10 +96,7 @@ function enemyBrain(room, e) {
   let best = Infinity;
   for (const p of room.players.values()) {
     const d = dist(e, p);
-    if (d < best) {
-      best = d;
-      nearest = p;
-    }
+    if (d < best) { best = d; nearest = p; }
   }
 
   if (nearest && best < 280 && Math.random() > 0.4) e.aggro = nearest.id;
@@ -172,7 +145,7 @@ function tickRoom(room) {
 
     if (p.cooldown > 0) p.cooldown -= 1;
     if (p.input.attack && p.cooldown === 0) {
-      p.cooldown = 18;
+      p.cooldown = 14;
       for (const e of room.enemies) {
         if (dist(p, e) < p.r + e.r + 18) {
           e.hp -= p.attack;
@@ -180,6 +153,7 @@ function tickRoom(room) {
             p.pveKills += 1;
             p.resources.protein += 2;
             p.resources.mineral += 1;
+            if (p.form === 'photo_cell' && Math.random() > 0.5) p.resources.gas += 1;
             e.hp = e.maxHp;
             e.x = rand(100, WORLD.width - 100);
             e.y = rand(100, WORLD.height - 100);
@@ -188,6 +162,7 @@ function tickRoom(room) {
       }
       for (const other of room.players.values()) {
         if (other.id !== p.id && dist(p, other) < p.r + other.r + 12) {
+          if (p.teamId && other.teamId && p.teamId === other.teamId) continue;
           const killed = hitPlayer(other, p.attack + 4);
           if (killed) {
             p.pvpKills += 1;
@@ -196,6 +171,8 @@ function tickRoom(room) {
         }
       }
     }
+
+    if (p.form === 'photo_cell' && Math.random() > 0.96) p.resources.gas += 1;
 
     for (let i = room.resources.length - 1; i >= 0; i--) {
       if (dist(p, room.resources[i]) < p.r + 9) {
@@ -218,14 +195,22 @@ function tickRoom(room) {
 }
 
 io.on('connection', (socket) => {
-  socket.on('join', ({ name, roomId }) => {
+  socket.on('join', ({ name, roomId, teamId }) => {
     const nick = (name || '玩家').slice(0, 12);
     const room = (roomId || 'main').slice(0, 20);
+    const team = (teamId || 'solo').slice(0, 20);
     socket.join(room);
     const roomState = getRoomState(room);
-    roomState.players.set(socket.id, createPlayer(socket.id, nick, room));
+    roomState.players.set(socket.id, createPlayer(socket.id, nick, room, team));
     socket.data.roomId = room;
-    socket.emit('welcome', { id: socket.id, roomId: room, world: WORLD, evolutions: EVOLUTIONS });
+    socket.emit('welcome', { id: socket.id, roomId: room, teamId: team, world: WORLD, evolutions: EVOLUTIONS });
+  });
+
+  socket.on('setTeam', ({ teamId }) => {
+    const roomId = socket.data.roomId;
+    if (!roomId || !rooms.has(roomId)) return;
+    const p = rooms.get(roomId).players.get(socket.id);
+    if (p) p.teamId = (teamId || 'solo').slice(0, 20);
   });
 
   socket.on('input', (input) => {

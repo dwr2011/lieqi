@@ -85,3 +85,5 @@ input {
   .layout { grid-template-columns: 1fr; }
   .game-wrap { height: 62vh; }
 }
+
+.subbtn { background:#2d4f88; color:#e8f1ff; margin-top:0; }

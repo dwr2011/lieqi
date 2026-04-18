@@ -16,17 +16,24 @@
         <h3>连接</h3>
         <label>昵称 <input id="nameInput" maxlength="12" value="hope" /></label>
         <label>房间 <input id="roomInput" maxlength="20" value="main" /></label>
+        <label>队伍 <input id="teamInput" maxlength="20" value="alpha" /></label>
         <button id="joinBtn">加入服务器</button>
+        <button id="teamBtn" class="subbtn">切换/加入队伍</button>
         <div id="connStatus" class="badge">未连接</div>
       </section>
 
       <section class="card">
         <h3>操作</h3>
         <ul class="ops">
-          <li>移动：W / A / S / D</li>
+          <li>移动：W / A / S / D（基础速度已提升）</li>
           <li>攻击：鼠标左键（近距离）或 J</li>
           <li>进化：数字键 1-0</li>
         </ul>
+      </section>
+
+      <section class="card">
+        <h3>队伍信息</h3>
+        <div id="teamBox">队伍：未加入</div>
       </section>
 
       <section class="card">

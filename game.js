@@ -2,11 +2,14 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const logEl = document.getElementById('log');
 const joinBtn = document.getElementById('joinBtn');
+const teamBtn = document.getElementById('teamBtn');
 const nameInput = document.getElementById('nameInput');
 const connStatus = document.getElementById('connStatus');
 const resourceBox = document.getElementById('resourceBox');
 const evoList = document.getElementById('evoList');
 const roomInput = document.getElementById('roomInput');
+const teamInput = document.getElementById('teamInput');
+const teamBox = document.getElementById('teamBox');
 
 const keys = { w: false, a: false, s: false, d: false, attack: false };
 let socket;
@@ -19,8 +22,10 @@ let inputTimer = null;
 
 const resourceName = { protein: '蛋白质', mineral: '矿物质', gas: '气体' };
 const evoName = {
+  photosynthesis: '光合作用', attack_organelle: '攻击器官', multicell: '多细胞',
   exoskeleton: '外骨骼', lung: '肺化', toxin: '毒腺', fin: '鳍化', spores: '孢子化',
   crab: '巨钳蟹', lizard: '疾走蜥蜴', jelly: '雷毒水母', ray: '深海鳐', beetle: '甲壳甲虫',
+  photo_cell: '光合细胞', spike_cell: '刺突细胞', cluster_cell: '多细胞团',
 };
 
 function resizeCanvas() {
@@ -49,68 +54,73 @@ function drawEvolutionList() {
   }).join('');
 }
 
+function renderTeamInfo(me) {
+  if (!me) return;
+  const mates = state.players.filter((p) => p.teamId === me.teamId);
+  teamBox.innerHTML = `队伍：<b>${me.teamId || 'solo'}</b><br>成员：${mates.map((m) => m.name).join('、')}`;
+}
+
 function worldToScreen(x, y) {
   return { x: x - camera.x, y: y - camera.y };
 }
 
-function drawForm(p, sx, sy) {
+function drawForm(p, sx, sy, isMate) {
   const r = p.r;
   ctx.save();
   ctx.translate(sx, sy);
-  ctx.strokeStyle = '#fff';
+  ctx.strokeStyle = isMate ? '#86ffad' : '#fff';
   ctx.lineWidth = 2;
 
-  if (p.form === 'crab') {
-    ctx.fillStyle = '#ff8e70';
-    ctx.beginPath();
-    ctx.rect(-r, -r * 0.7, r * 2, r * 1.4);
-    ctx.fill();
-    ctx.stroke();
-  } else if (p.form === 'lizard') {
-    ctx.fillStyle = '#96ff84';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, r * 1.4, r * 0.8, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-r * 1.4, 0);
-    ctx.lineTo(-r * 2.4, r * 0.2);
-    ctx.stroke();
-  } else if (p.form === 'jelly') {
-    ctx.fillStyle = '#8cd8ff';
-    ctx.beginPath();
-    ctx.arc(0, -r * 0.2, r, Math.PI, 0);
-    ctx.lineTo(r, r * 0.7);
-    ctx.lineTo(-r, r * 0.7);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  } else if (p.form === 'beetle') {
-    ctx.fillStyle = '#7c5cff';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, r, r * 1.2, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0, -r * 1.2);
-    ctx.lineTo(0, r * 1.2);
-    ctx.stroke();
-  } else if (p.form === 'ray') {
-    ctx.fillStyle = '#75d5ff';
-    ctx.beginPath();
-    ctx.moveTo(-r * 1.4, 0);
-    ctx.lineTo(0, -r * 0.8);
-    ctx.lineTo(r * 1.4, 0);
-    ctx.lineTo(0, r * 0.8);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  } else {
-    ctx.fillStyle = p.id === myId ? '#4de9ff' : '#ff9ff1';
+  if (p.form === 'photo_cell') {
+    ctx.fillStyle = '#6dff7f';
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-r * 1.4, 0);
+    ctx.lineTo(r * 1.4, 0);
+    ctx.moveTo(0, -r * 1.4);
+    ctx.lineTo(0, r * 1.4);
+    ctx.stroke();
+  } else if (p.form === 'spike_cell') {
+    ctx.fillStyle = '#ff8b8b';
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (Math.PI * 2 * i) / 8;
+      const rr = i % 2 ? r * 0.75 : r * 1.25;
+      const x = Math.cos(a) * rr;
+      const y = Math.sin(a) * rr;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (p.form === 'cluster_cell') {
+    ctx.fillStyle = '#b0c9ff';
+    [[-r * 0.6, 0], [r * 0.6, 0], [0, -r * 0.6], [0, r * 0.6]].forEach(([x, y]) => {
+      ctx.beginPath(); ctx.arc(x, y, r * 0.55, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    });
+  } else if (p.form === 'crab') {
+    ctx.fillStyle = '#ff8e70';
+    ctx.beginPath(); ctx.rect(-r, -r * 0.7, r * 2, r * 1.4); ctx.fill(); ctx.stroke();
+  } else if (p.form === 'lizard') {
+    ctx.fillStyle = '#96ff84';
+    ctx.beginPath(); ctx.ellipse(0, 0, r * 1.4, r * 0.8, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-r * 1.4, 0); ctx.lineTo(-r * 2.4, r * 0.2); ctx.stroke();
+  } else if (p.form === 'jelly') {
+    ctx.fillStyle = '#8cd8ff';
+    ctx.beginPath(); ctx.arc(0, -r * 0.2, r, Math.PI, 0); ctx.lineTo(r, r * 0.7); ctx.lineTo(-r, r * 0.7); ctx.closePath(); ctx.fill(); ctx.stroke();
+  } else if (p.form === 'beetle') {
+    ctx.fillStyle = '#7c5cff';
+    ctx.beginPath(); ctx.ellipse(0, 0, r, r * 1.2, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -r * 1.2); ctx.lineTo(0, r * 1.2); ctx.stroke();
+  } else if (p.form === 'ray') {
+    ctx.fillStyle = '#75d5ff';
+    ctx.beginPath(); ctx.moveTo(-r * 1.4, 0); ctx.lineTo(0, -r * 0.8); ctx.lineTo(r * 1.4, 0); ctx.lineTo(0, r * 0.8); ctx.closePath(); ctx.fill(); ctx.stroke();
+  } else {
+    ctx.fillStyle = p.id === myId ? '#4de9ff' : '#ff9ff1';
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
 
   ctx.restore();
@@ -129,6 +139,7 @@ function render() {
     camera.x = Math.max(0, Math.min(world.width - viewW, me.x - viewW / 2));
     camera.y = Math.max(0, Math.min(world.height - viewH, me.y - viewH / 2));
     resourceBox.textContent = `${resourceName.protein}:${me.resources.protein} ${resourceName.mineral}:${me.resources.mineral} ${resourceName.gas}:${me.resources.gas} | 形态:${evoName[me.form] || me.form}`;
+    renderTeamInfo(me);
   }
 
   for (let gx = 0; gx < world.width; gx += 120) {
@@ -152,23 +163,22 @@ function render() {
   state.enemies.forEach(e => {
     const s = worldToScreen(e.x, e.y);
     if (s.x < -30 || s.y < -30 || s.x > viewW + 30 || s.y > viewH + 30) return;
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, e.r, 0, Math.PI * 2);
+    ctx.beginPath(); ctx.arc(s.x, s.y, e.r, 0, Math.PI * 2);
     ctx.fillStyle = e.aggro ? '#ff7373' : '#d58dff';
     ctx.fill();
-    ctx.fillStyle = '#230026';
-    ctx.fillRect(s.x - 16, s.y - 24, 32, 4);
-    ctx.fillStyle = '#ff95b6';
-    ctx.fillRect(s.x - 16, s.y - 24, (e.hp / e.maxHp) * 32, 4);
+    ctx.fillStyle = '#230026'; ctx.fillRect(s.x - 16, s.y - 24, 32, 4);
+    ctx.fillStyle = '#ff95b6'; ctx.fillRect(s.x - 16, s.y - 24, (e.hp / e.maxHp) * 32, 4);
   });
 
   state.players.forEach(p => {
     const s = worldToScreen(p.x, p.y);
     if (s.x < -40 || s.y < -40 || s.x > viewW + 40 || s.y > viewH + 40) return;
-    drawForm(p, s.x, s.y);
-    ctx.fillStyle = '#ffffff';
+    const me = state.players.find(x => x.id === myId);
+    const isMate = me && me.teamId && me.teamId === p.teamId;
+    drawForm(p, s.x, s.y, isMate);
+    ctx.fillStyle = isMate ? '#a3ffc2' : '#ffffff';
     ctx.font = '12px sans-serif';
-    ctx.fillText(`${p.name}(${p.pveKills}/${p.pvpKills})`, s.x - 28, s.y - 26);
+    ctx.fillText(`${p.name}[${p.teamId}] (${p.pveKills}/${p.pvpKills})`, s.x - 45, s.y - 26);
   });
 
   ctx.fillStyle = '#d6ecff';
@@ -207,15 +217,9 @@ function bindKeys() {
     if (e.key.toLowerCase() === 'j') keys.attack = false;
   });
 
-  canvas.addEventListener('mousedown', (e) => {
-    if (e.button === 0) keys.attack = true;
-  });
-  canvas.addEventListener('mouseup', (e) => {
-    if (e.button === 0) keys.attack = false;
-  });
-  canvas.addEventListener('mouseleave', () => {
-    keys.attack = false;
-  });
+  canvas.addEventListener('mousedown', (e) => { if (e.button === 0) keys.attack = true; });
+  canvas.addEventListener('mouseup', (e) => { if (e.button === 0) keys.attack = false; });
+  canvas.addEventListener('mouseleave', () => { keys.attack = false; });
 }
 
 function connect() {
@@ -225,7 +229,11 @@ function connect() {
   connStatus.style.background = '#5a4d1b';
 
   socket.on('connect', () => {
-    socket.emit('join', { name: nameInput.value.trim() || '玩家', roomId: roomInput.value.trim() || 'main' });
+    socket.emit('join', {
+      name: nameInput.value.trim() || '玩家',
+      roomId: roomInput.value.trim() || 'main',
+      teamId: teamInput.value.trim() || 'solo',
+    });
   });
 
   socket.on('welcome', (payload) => {
@@ -233,7 +241,7 @@ function connect() {
     world = payload.world;
     evolutions = payload.evolutions;
     drawEvolutionList();
-    connStatus.textContent = `已连接 (${payload.roomId})`;
+    connStatus.textContent = `已连接 (${payload.roomId} / 队伍:${payload.teamId})`;
     connStatus.style.background = '#1f5b34';
     log('连接成功，开始联机。');
   });
@@ -252,6 +260,13 @@ function connect() {
   if (inputTimer) clearInterval(inputTimer);
   inputTimer = setInterval(sendInput, 1000 / 20);
 }
+
+teamBtn.onclick = () => {
+  if (!socket) return log('请先连接服务器。');
+  const teamId = teamInput.value.trim() || 'solo';
+  socket.emit('setTeam', { teamId });
+  log(`已请求切换队伍 -> ${teamId}`);
+};
 
 bindKeys();
 resizeCanvas();
