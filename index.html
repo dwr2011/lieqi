@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>细胞进化联机战场</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="layout">
+    <aside class="panel">
+      <h1>细胞进化联机战场</h1>
+      <p class="subtitle">单机一人一角色｜多人同服同房间联机</p>
+
+      <section class="card">
+        <h3>连接与存档</h3>
+        <label>昵称 <input id="nameInput" maxlength="12" value="hope" /></label>
+        <label>房间 <input id="roomInput" maxlength="20" value="main" /></label>
+        <label>队伍 <input id="teamInput" maxlength="20" value="alpha" /></label>
+        <button id="joinBtn">加入服务器</button>
+        <div class="row-btn">
+          <button id="teamBtn" class="subbtn">切换队伍</button>
+          <button id="saveBtn" class="subbtn save">立即存档</button>
+        </div>
+        <div id="connStatus" class="badge">未连接</div>
+      </section>
+
+      <section class="card">
+        <h3>操作说明</h3>
+        <ul class="ops">
+          <li>移动：W / A / S / D（更丝滑）</li>
+          <li>攻击：鼠标左键（近距离）或 J</li>
+          <li>进化：数字键 1-0（列表会动态变化）</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h3>我的状态</h3>
+        <div id="hpBox">生命:0/0 攻击:0 护甲:0% 形态:细胞</div>
+        <div id="resourceBox">蛋白质:0 矿物质:0 气体:0</div>
+      </section>
+
+      <section class="card">
+        <h3>队伍信息</h3>
+        <div id="teamBox">队伍：未加入</div>
+      </section>
+
+      <section class="card">
+        <h3>可进化项（需求 + 作用）</h3>
+        <div id="evoList" class="scroll">连接后加载...</div>
+      </section>
+
+      <section class="card">
+        <h3>日志</h3>
+        <div id="log" class="scroll log">等待加入服务器...</div>
+      </section>
+    </aside>
+
+    <section class="game-wrap">
+      <canvas id="game"></canvas>
+    </section>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
