@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>细胞进化联机战场</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="layout">
+    <aside class="panel">
+      <h1>细胞进化联机战场</h1>
+      <p>每台电脑只操控一个玩家，支持多人联机（同房间/同服务器）。</p>
+      <p>移动：WASD / 攻击：J / 进化：数字键 1-0</p>
+      <label>昵称 <input id="nameInput" maxlength="12" value="玩家" /></label>
+      <button id="joinBtn">加入服务器</button>
+      <div id="connStatus" class="badge">未连接</div>
+
+      <section>
+        <h3>资源</h3>
+        <div id="resourceBox">protein:0 mineral:0 gas:0</div>
+      </section>
+
+      <section>
+        <h3>进化方案（已写明资源需求）</h3>
+        <div id="evoList" class="scroll"></div>
+      </section>
+
+      <section>
+        <h3>日志</h3>
+        <div id="log" class="scroll log"></div>
+      </section>
+    </aside>
+
+    <section class="game-wrap">
+      <canvas id="game" width="1200" height="700"></canvas>
+    </section>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
